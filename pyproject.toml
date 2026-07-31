@@ -1,0 +1,75 @@
+[project]
+name = "hass-tplink-deco-r4"
+version = "0.0.1"
+description = "Home Assistant integration for monitoring TP-Link Deco mesh routers on 2026-era firmware"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.14.2"
+# Runtime dependencies of the integration. Mirror the `requirements` list from
+# custom_components/tplink_deco_r4/manifest.json here: Home Assistant installs them
+# at launch, but our dev tooling and the pip-audit hook (which audits
+# `uv export --no-dev`, i.e. this tree only, excluding HA) need them declared here
+# too. Keep the two in step.
+dependencies = []
+
+# Development / tooling dependencies (source of truth for the dev environment).
+# Manage with uv:
+#   uv sync              install/refresh the .venv from uv.lock
+#   uv add --dev <pkg>   add a dev dependency (updates pyproject.toml + uv.lock)
+#   uv run <cmd>         run a command inside the project environment
+[dependency-groups]
+dev = [
+    "colorlog==6.11.0",
+    "homeassistant>=2026.7.2",
+    "pre-commit==4.6.0",
+    "ruff==0.15.22",
+    "mypy==2.2.0",
+    "python-dotenv",
+    "pytest-homeassistant-custom-component>=0.13.346",
+    "pylint>=4.0.6",
+]
+
+# This repo is a Home Assistant custom component, not an installable package, so
+# tell uv not to build/install the project itself - only manage its dependencies.
+[tool.uv]
+package = false
+
+# Static type checking. Scoped to the shipped integration only (like the pip-audit
+# hook is scoped to our deps): Home Assistant's dynamic surface and the tests are
+# out of scope, so `uv run mypy` and the mypy pre-commit hook both check just the
+# package. strict=true already implies most flags below; they are spelled out to
+# document intent. If a test suite type-check is wanted later, add it under a
+# relaxed [[tool.mypy.overrides]] rather than loosening the package rules.
+[tool.mypy]
+python_version = "3.14"
+files = ["custom_components/tplink_deco_r4"]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_reexport = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+# pytest-homeassistant-custom-component (and the aiohttp/asyncio plugins it pulls
+# in) register async autouse fixtures; "auto" mode lets pytest-asyncio drive them
+# so plain sync unit tests run cleanly alongside HA integration tests.
+asyncio_mode = "auto"
+
+# Pylint runs for one thing only: the duplicate-code (copy/paste) detector, which
+# ruff does not provide. Everything else is disabled (ruff owns linting). The
+# `duplicate-code` pre-commit hook runs this over custom_components/tplink_deco_r4.
+[tool.pylint."messages control"]
+disable = ["all"]
+enable = ["duplicate-code"]
+
+[tool.pylint.similarities]
+min-similarity-lines = 6  # flag copy/paste of 6+ similar lines; tune if too strict
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true
+ignore-signatures = true

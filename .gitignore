@@ -1,0 +1,35 @@
+# artifacts
+__pycache__
+.pytest*
+*.egg-info
+*/build/*
+*/dist/*
+
+# uv-managed virtual environment (uv.lock IS committed)
+.venv
+
+
+# misc
+.coverage
+.vscode
+coverage.xml
+.ruff_cache
+
+
+# Home Assistant configuration
+config/*
+!config/configuration.yaml
+
+# Vim Undo files
+*~
+
+.env
+
+# diagnostic capture artifacts
+# HAR/pcap captures of the router web UI contain credentials, session tokens and
+# a household device list - never commit them.
+scripts/in/
+scripts/out/
+*.har
+*.pcap
+*.pcapng

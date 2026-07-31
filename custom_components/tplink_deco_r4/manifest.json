@@ -1,0 +1,12 @@
+{
+  "domain": "tplink_deco_r4",
+  "name": "TP-Link Deco R4",
+  "codeowners": ["@rhanekom"],
+  "config_flow": false,
+  "documentation": "https://github.com/rhanekom/hass-tplink-deco-r4",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/rhanekom/hass-tplink-deco-r4/issues",
+  "requirements": [],
+  "version": "0.0.1"
+}

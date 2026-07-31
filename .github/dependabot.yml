@@ -1,0 +1,29 @@
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Enable "Dependabot alerts" and "Dependabot security updates" in the repo's
+# Settings -> Code security. This file drives version updates.
+version: 2
+updates:
+  # Keep CI workflow actions patched.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Let a new release settle before opening a PR (avoids churn on yanked/hotfixed tags).
+    cooldown:
+      default-days: 7
+
+  # Python dependencies. This is a uv project, so use the "uv" ecosystem (not "pip")
+  # so pyproject.toml + uv.lock and the dependency-groups are read correctly.
+  #
+  # Home Assistant is excluded: its version is pinned to the floor in hacs.json, so
+  # Dependabot bumping it would break that contract. Everything else (the runtime dep
+  # and the dev tooling) is updated normally.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "homeassistant"
