@@ -42,6 +42,48 @@ other models are welcome.
 - **Home Assistant 2026.3.0 or newer** (the release that adopted Python 3.14).
 - A TP-Link Deco mesh with admin (web UI) credentials.
 
+## Known limitations of the router's own interface
+
+These are constraints of the Deco firmware, not of this integration. They were
+measured against the reference hardware; see
+[`doc/specification.md`](./doc/specification.md) for the evidence.
+
+### Polling logs you out of the router's web UI
+
+**The firmware allows exactly one admin session, and every login evicts the
+previous one.** Establishing a new session makes the existing one fail
+immediately with HTTP 403. There is no session sharing, no read-only session, and
+no keep-alive that coexists with a second login.
+
+The practical effect: while this integration is polling, **anyone logged into the
+Deco router's local web UI will be kicked out**, repeatedly, at roughly the
+refresh interval. Equally, someone logging into the web UI takes the
+integration's session away, and the integration silently logs back in on its next
+poll.
+
+There is no workaround at the protocol level. What this integration does about it:
+
+- Re-authenticates and retries transparently, so a stolen session costs one
+  extra login rather than a failed update.
+- Defaults to a **30 second** refresh interval rather than the 5-10 seconds the
+  router's own web UI uses.
+
+If you need to work in the router's web UI uninterrupted, disable the integration
+for the duration. Raising the refresh interval widens the gaps but does not
+remove the problem.
+
+Whether the TP-Link **cloud** mobile app shares this same local session table has
+not been established; the local web UI definitely does.
+
+### CPU load and memory usage are not real
+
+The firmware's `performance` endpoint returns a **static value**. On the
+reference hardware it reports the same figures regardless of load, over time, and
+across every node in the mesh, while other endpoints from the same session update
+continuously. The numbers look plausible, which is precisely why they are worth
+warning about: exposed as sensors they would be flat lines that appear to work.
+This integration therefore does not present them as usable metrics.
+
 ## Development
 
 The repo ships a devcontainer with everything wired up (uv, ruff, mypy, pytest,

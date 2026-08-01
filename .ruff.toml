@@ -35,7 +35,11 @@ ignore = [
 # and TLS/crypto rules (the proven logic gets ported into custom_components/ with
 # full linting).
 "scripts/**/*.py" = [
-    "D100", "D101", "D103", "D107", "D205", "D209", "D213", # docstrings relaxed for CLI tools
+    "D100", "D101", "D102", "D103", "D105", "D107", "D205", "D209", "D213", # docstrings relaxed for CLI tools
+    "ANN204", # __init__ return annotations are noise on throwaway helpers
+    "FBT003", # boolean positional args to local helpers (e.g. _aes_cbc(..., encrypt))
+    "PLC0415", # deliberate lazy imports: optional deps (dotenv) and heavy ones (cryptography)
+    "PLR0915", # the probe's main() is a long but flat sequence of checks
     "PLR2004", # magic values are fine in a protocol prototype
     "TRY003", "EM101", "EM102", # inline exception messages are readable here
     "FBT001", "FBT002", # boolean CLI flags
