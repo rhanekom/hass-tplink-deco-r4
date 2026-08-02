@@ -8,9 +8,19 @@ Home Assistant integration for monitoring **TP-Link Deco** mesh routers running
 [![HACS: Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 
-> **Status: early scaffolding.** This repository currently contains the dev
-> environment, tooling and CI only. The integration is not implemented yet, so
-> there is nothing to install.
+> ## Status: under development, does nothing yet
+>
+> **There is no working integration in this repository.** Installing it does
+> nothing: `custom_components/tplink_deco_r4` is a stub package with no entities,
+> no config flow and no connection to a router. Do not add it to Home Assistant
+> expecting it to work.
+>
+> What does exist today is the groundwork: a dev environment with tooling and CI,
+> a reverse-engineered protocol specification in
+> [`doc/specification.md`](./doc/specification.md), and read-only diagnostic
+> tools under [`scripts/`](./scripts/) that prove the protocol against real
+> hardware. The implementation comes next; progress is tracked in
+> [`doc/TODO.md`](./doc/TODO.md).
 
 ## Why this exists
 
@@ -19,8 +29,11 @@ and [roquerodrigo/ha-tplink-deco](https://github.com/roquerodrigo/ha-tplink-deco
 plus its `tplink-deco-api` library) implement the older `;stok=/login?form=keys`
 RSA login flow. Recent Deco firmware replaced that login transport wholesale, so
 those integrations cannot authenticate against it at all: every request to the
-legacy path returns a fixed HTTP 401 regardless of credentials. This project
-implements the new flow so the routers can be monitored again.
+legacy path returns a fixed HTTP 401 regardless of credentials.
+
+This project reverse-engineers and documents the replacement flow, with a working
+read-only client under [`scripts/`](./scripts/) proving it against real hardware.
+Turning that into a Home Assistant integration is the work still to come.
 
 ## Tested hardware
 
@@ -44,9 +57,13 @@ other models are welcome.
 
 ## Known limitations of the router's own interface
 
-These are constraints of the Deco firmware, not of this integration. They were
-measured against the reference hardware; see
-[`doc/specification.md`](./doc/specification.md) for the evidence.
+Findings from the protocol research, recorded here because they shape what this
+integration will ever be able to do. They are constraints of the Deco firmware,
+not of this integration, and they were measured against the reference hardware;
+see [`doc/specification.md`](./doc/specification.md) for the evidence.
+
+Where the text below says what "this integration does", it describes the intended
+behaviour once implemented, not behaviour that exists today.
 
 ### Polling logs you out of the router's web UI
 

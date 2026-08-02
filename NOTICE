@@ -9,3 +9,40 @@ Third-party attributions go here as they are added: if any code, protocol
 implementation or algorithm in this repository is derived from another project,
 record the source project, its copyright holder, its license, and exactly which
 files or functions it covers.
+
+---
+
+Brand assets
+------------
+
+Files:
+    custom_components/tplink_deco_r4/brand/icon.png
+    custom_components/tplink_deco_r4/brand/icon@2x.png
+    custom_components/tplink_deco_r4/brand/logo.png
+    custom_components/tplink_deco_r4/brand/logo@2x.png
+    custom_components/tplink_deco_r4/brand/dark_logo.png
+    custom_components/tplink_deco_r4/brand/dark_logo@2x.png
+
+There is deliberately no dark_icon variant: upstream ships none for this brand,
+and the icon is entirely mid-tone (no fully dark or fully light pixels), so it
+reads on both light and dark backgrounds. The logo wordmark is dark and does
+need the dark_logo variant.
+
+Copied byte-for-byte from the Home Assistant brands repository,
+https://github.com/home-assistant/brands, path core_brands/tplink, at commit
+d02462434d8bca6612eadc44c512ab7b51618409. That repository carries no license
+file; it states the following, which applies equally to the copies here:
+
+    All product names, trademarks and registered trademarks in the images in
+    this repository, are property of their respective owners. All images in
+    this repository are used by the Home Assistant project for identification
+    purposes only.
+
+    The use of these names, trademarks and brands appearing in these image
+    files, do not imply endorsement.
+
+TP-Link is a trademark of TP-Link Technologies Co., Ltd. These images are
+included here for the same purpose: to identify which vendor's hardware this
+integration talks to. Their inclusion does not imply that TP-Link endorses,
+sponsors or is affiliated with this project, and this project is not an official
+TP-Link product.

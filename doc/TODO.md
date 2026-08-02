@@ -38,7 +38,14 @@ milestones. Keep it current as work lands.
       first.
 - [x] README warns that polling evicts anyone logged into the router's own web
       UI, that CPU/memory are not real, and that the admin password grants full
-      device read.
+      device read, and states plainly that nothing works yet.
+- [x] Add brand assets so the HACS `brands` check passes, including the dark-mode
+      logo. Copied from home-assistant/brands `core_brands/tplink`; provenance
+      and the trademark notice are recorded in `NOTICE`. No `dark_icon` is needed
+      (the icon is all mid-tone; only the wordmark needs inverting). Verify on the next PR into `main` that
+      `Validate` goes green - it has been failing on that check since 31 July.
+      The longer-term fix is submitting `tplink_deco_r4` to
+      home-assistant/brands once the integration actually does something.
 
 ## Open questions
 
