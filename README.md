@@ -75,6 +75,15 @@ remove the problem.
 Whether the TP-Link **cloud** mobile app shares this same local session table has
 not been established; the local web UI definitely does.
 
+### The admin password is not a least-privilege credential
+
+Worth knowing before you hand it to anything. The router exposes a low-level
+read channel alongside its normal API, and an authenticated session can use it
+to read the device's stored secrets, not just its status: factory default
+credentials, the local account hash, and cloud account tokens are all reachable.
+This integration does not use that channel, but the credential you configure is
+capable of it, so treat it with the same care as any other device secret.
+
 ### CPU load and memory usage are not real
 
 The firmware's `performance` endpoint returns a **static value**. On the

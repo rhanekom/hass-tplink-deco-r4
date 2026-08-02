@@ -204,14 +204,21 @@ class AesKey:
         ).decode("ascii")
 
     def decrypt(self, b64: str) -> str:
+        """Decrypt to text. Strict UTF-8: a decode error means the wrong key."""
+        return self.decrypt_bytes(b64).decode("utf-8", errors="strict")
+
+    def decrypt_bytes(self, b64: str) -> bytes:
+        """Decrypt to raw bytes.
+
+        The `?code=2` block channel returns raw firmware blocks, some of which
+        are not valid UTF-8, so callers on that path must not assume text.
+        """
         raw = base64.b64decode(b64, validate=False)
         if not raw or len(raw) % 16:
             raise DecoError(
                 f"ciphertext is not a whole number of AES blocks ({len(raw)} bytes)"
             )
-        return _pkcs7_unpad(
-            _aes_cbc(self._key_bytes, self._iv_bytes, raw, False)
-        ).decode("utf-8", errors="strict")
+        return _pkcs7_unpad(_aes_cbc(self._key_bytes, self._iv_bytes, raw, False))
 
     @property
     def _key_bytes(self) -> bytes:
@@ -723,6 +730,93 @@ class DecoClient:
     async def get_internet(self) -> dict[str, Any]:
         return await self.call("/admin/network?form=internet")
 
+    # -- the ?code=2 "vxWorks" block channel -------------------------------- #
+
+    async def read_blocks(self, spec: str) -> tuple[int | None, str]:
+        """Read raw firmware blocks over `?code=2&asyn=0`.
+
+        `spec` is the block specification the UI builds: numeric block ids joined
+        by `#`, each optionally suffixed with `|layer,layer` (for example `"2#3"`
+        for the syslog store). Unlike the `?form=` API the plaintext payload is a
+        bare JSON *string* rather than an object, because the framework passes the
+        spec straight through `JSON.stringify`.
+
+        Returns `(error_code, body)` where `body` is the raw block text. `code=2`
+        is the read opcode; `code=0` is the corresponding clear/write opcode and
+        is deliberately not implemented here.
+
+        **Block data is sensitive.** This channel reads far more than the web UI
+        shows, including fields holding the local account hash, factory default
+        credentials and cloud tokens (spec 9.5.1). Never log a block dump, never
+        commit one, and keep any saved output in the gitignored `scripts/out/`.
+        The integration itself has no need for this channel; it is documented
+        because it is the only live source of WAN counters (spec 9.5.2).
+        """
+        envelope = self._envelope_raw(json.dumps(spec))
+        status, text = await self._post(
+            "/?code=2&asyn=0", envelope, "text/plain;charset=UTF-8", with_id=True
+        )
+        if status in (401, 403, 408):
+            raise DecoSessionExpiredError(f"session rejected with HTTP {status}")
+        if status != 200:
+            raise DecoApiError(f"HTTP {status} from the block channel")
+        if self._aes is None:
+            raise DecoError("no AES key")
+        # Lenient decode: some blocks are raw binary, and for exploration a
+        # partially-readable block beats an exception.
+        plaintext = self._aes.decrypt_bytes(text.strip()).decode(
+            "utf-8", errors="replace"
+        )
+        return _split_error_and_data(plaintext)
+
+    def _envelope_raw(self, plaintext: str) -> str:
+        """Envelope an already-serialised plaintext payload."""
+        if self._aes is None or self._rsa is None or self._seq is None:
+            raise DecoError("no session crypto state")
+        data = self._aes.encrypt(plaintext)
+        signed = f"{self._aes.key_string}&s={self._seq + len(data)}"
+        return f"sign={rsa_encrypt_hex(signed, self._rsa)}&data={data}"
+
+
+def parse_blocks(body: str) -> dict[str, dict[str, str]]:
+    """Parse the block channel's text format into {block_id: {name: value}}.
+
+    A port of `frame.js`'s `parser()`, reduced to the shape it actually emits:
+
+    ```text
+    # a comment line
+    id 2
+    name value
+    other_name value
+    id 3
+    ...
+    ```
+
+    Names may carry a numeric index (`name 0 value`), which is folded into the
+    key as `name[0]` so nothing is silently lost.
+    """
+    blocks: dict[str, dict[str, str]] = {}
+    current: dict[str, str] | None = None
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        name = parts[0]
+        rest = parts[1].strip() if len(parts) > 1 else ""
+        if name == "id":
+            current = blocks.setdefault(rest, {})
+            continue
+        if current is None:
+            continue
+        # `name <index> <value>` when the first token of the value is a bare int.
+        bits = rest.split(None, 1)
+        if len(bits) == 2 and bits[0].isdigit():
+            current[f"{name}[{bits[0]}]"] = bits[1]
+        else:
+            current[name] = rest
+    return blocks
+
 
 # --------------------------------------------------------------------------- #
 # Unauthenticated probes
@@ -751,6 +845,19 @@ async def probe_unauthenticated(host: str, verify_ssl: bool = False) -> dict[str
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+
+
+def _split_error_and_data(text: str) -> tuple[int | None, str]:
+    """Port of `frame.js` `errorAndDataSplit`.
+
+    The block channel prefixes its payload with a zero-padded numeric status on
+    its own line. A non-numeric first line means there is no status prefix.
+    """
+    head, sep, rest = text.partition("\n")
+    candidate = head.rstrip("\r")
+    if sep and candidate and candidate.isdigit():
+        return int(candidate), rest
+    return None, text
 
 
 def _expect_ok(status: int, text: str, what: str) -> None:

@@ -1087,19 +1087,131 @@ AES envelope. [js]
 POST /?code=2&asyn=0&id=<session id>
 ```
 
-A second read style for bulk tabular data. Instead of a JSON `operation`, the
-plaintext payload is a `#`-separated list of numeric block ids (optionally
-`id|layer1,layer2`), and the response is a custom key/value text format parsed
-by `frame.js`'s `parser()`, prefixed by a zero-padded error code line. [js]
+A second, far lower-level read interface, and **much larger than the `?form=`
+API**. It exposes the firmware's raw configuration and statistics blocks by
+numeric id.
 
-Used for the syslog store (`blocks: [2, 3]`) and the timezone table. One such
-call was captured, returning about 58 KB. [wire] Not needed for monitoring; the
-`/admin/**?form=` JSON API covers everything the integration requires.
+**Request.** Same AES + RSA envelope as the JSON API, but the plaintext payload
+is a bare JSON *string* rather than an object, because the framework passes the
+block specification straight through `JSON.stringify`: [js]
 
-Related: `?code=0&asyn=0` is the corresponding "clear" operation (the syslog
-store sends `systool syslog -clean`), and
-`/syslog.txt?code=0&asyn=0&disposition=1` downloads the log file. Both are
-**writes**; do not call.
+```text
+plaintext = "2#3"     (with the quotes -- it is a JSON string)
+```
+
+Block ids are joined with `#`, each optionally suffixed `|layer,layer`.
+`sysLogStore` uses `blocks: [2, 3]`. [js]
+
+**Response.** A zero-padded numeric status on its own line, then an INI-ish text
+body: [live]
+
+```text
+00000
+id 2|1,0,0
+num 22
+level 0 1
+level 1 3
+id 3|1,0,0
+num 8
+msg 0 Exception:|2026-03-24...
+```
+
+`id <n>` opens a section; remaining lines are `name value`, or
+`name <index> value` for array fields. `frame.js`'s `parser()` is the reference;
+`parse_blocks()` in `scripts/deco_protocol.py` is a port. **Some blocks are not
+valid UTF-8**, so decode leniently or handle bytes. [live]
+
+`?code=0&asyn=0` is the matching **clear/write** opcode (the syslog store sends
+`systool syslog -clean` through it) and `/syslog.txt?code=0&asyn=0&disposition=1`
+downloads the log file. Both are writes; do not call them.
+
+#### 9.5.1 Security: this channel reads far more than the UI shows
+
+> **An authenticated session can read credential material through this channel.**
+> [live] A sweep of blocks 0-130 found, among ordinary configuration, fields named
+> `defAuthuser` / `defAuthpwd` (block 0), `authKey` (blocks 1 and 11),
+> `username` / `username_md5` / `shadow` plus a password-shaped field (block 102),
+> a cloud account field (block 62), and a cloud `token` (block 63). Field *names*
+> were enumerated deliberately without reading their values.
+>
+> The practical consequence: **the Deco admin password is not a
+> least-privilege credential.** Anything holding it can read the device's stored
+> secrets, not merely its status. That raises the bar on how an integration
+> stores it, and it is worth knowing before pointing any tooling at a router you
+> do not own.
+>
+> Nothing in this integration needs this channel. Treat any block dump as
+> sensitive: `scripts/` writes only to the gitignored `scripts/out/`, and no
+> block data belongs in a commit, an issue, or a log.
+
+#### 9.5.2 Block 22: the live WAN statistics the JSON API does not expose
+
+Worth documenting because `form=performance` is static (7.5) while **this block
+is genuinely live**. [live]
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `inOctets`, `outOctets` | int | **Monotonic WAN byte counters** |
+| `inPkts`, `outPkts` | int | Monotonic WAN packet counters |
+| `inRates`, `outRates` | int | Instantaneous WAN rate |
+| `ports_in_rate[n]`, `ports_out_rate[n]` | int | Per-Ethernet-port instantaneous rate (3 ports on the E4R) |
+| `upTime` | int | Monotonic tick counter, see below |
+| `status`, `code` | int | WAN status (`status=1` while up) |
+| `ip`, `mask`, `gateway`, `dns[n]` | string | WAN addressing. In AP mode these mirror the LAN |
+| `dual*` | mixed | Second/backup WAN, all zeroes when unused |
+
+Confirmed live: over a 363-second window the counters advanced by **+277 MB in**
+and **+32 MB out**, and they increase monotonically between every sample. [live]
+These are exactly the right shape for Home Assistant `total_increasing` sensors,
+with throughput derived from the deltas.
+
+**`upTime` advances at about 64.5 ticks per second.** [live] Measured over two
+independent 181-second windows: 64.14 and 64.91 ticks/s, and 64.52 overall --
+consistent with a 64 Hz kernel tick, so dividing by 64 yields seconds. Short
+samples are useless here: over ~16-second windows the counter moves in quantised
+jumps and implies anything from 56 to 71 ticks/s. What the counter measures is
+**[unverified]**: it could be system uptime or WAN-link uptime, and telling them
+apart needs a known reboot or link drop.
+
+**`inRates` / `outRates` units are [unverified].** They are instantaneous, so
+they cannot be checked against an averaged counter delta -- comparing them to
+16-second octet averages gave ratios from 0.86x to 11x purely because household
+traffic is bursty. The `outRates` comparisons clustered near Kbit/s, which
+matches the confirmed unit for client rates (7.6), so Kbit/s is the working
+assumption. **Prefer the octet counters**: a monotonic byte counter has no unit
+ambiguity.
+
+#### 9.5.3 Other blocks seen
+
+Names only, from a 0-130 sweep. Useful for orientation; none is needed by this
+integration. [live]
+
+| Block | Contents |
+| --- | --- |
+| 0 | Device identity: `brandName`, `deviceId`, `countryCode`, factory defaults **(credentials)** |
+| 2, 3 | Syslog entries and exception traces |
+| 4, 8 | LAN addressing; DHCP server settings |
+| 5 | Web server ports (`port`, `httpsPort`) |
+| 6 | MAC access-control list |
+| 9, 12 | DHCP leases and address bindings |
+| 19, 20 | Port forwarding / virtual servers |
+| 22 | **Live WAN statistics** (above) |
+| 27, 28 | Time zone / NTP settings, and the current system clock |
+| 29 | Wireless flags (`bEnabled`, `bGuestIsolated`, `bAtf`, ...) |
+| 32 | IPTV / VLAN tagging |
+| 39-42 | IPv6 addressing |
+| 51 | Bandwidth control (`upBand`, `downBand`) |
+| 62-66, 102 | Cloud account and local account **(credentials)** |
+| 84 | Radio tuning (`best_effort_rssi_inc`, band steering weights) |
+| 98 | Node list (`deviceId`, `device_model`, `nickname`, `role`) |
+| 118 | Mesh/PLC link state (`TrafficEth*`, `capIp`, `capMac`, `linkState`) |
+| 122 | Client-type table |
+| 124 | Firmware metadata (`firmware_ver`, `modelName`, `releaseDate`) |
+
+**No CPU or memory block exists.** A full sweep of blocks 0-130 found no field
+matching `cpu`, `mem`, `ram`, `load`, `heap`, `idle`, `swap` or `temp`. [live]
+Combined with 7.5, that closes the question: **CPU and memory usage are not
+obtainable from this firmware by any route found.**
 
 ### 9.6 Static configuration files
 
@@ -1135,6 +1247,9 @@ conformance test to re-run against new firmware.
 | Does `seq` ever need incrementing? | **No.** 60 calls over 85 s on a fixed `seq` (3.4) |
 | Can one call attribute clients to nodes? | **Yes**, via `linked_device_info.device_id`, 79/79 agreement (7.7) |
 | Are sessions stable enough to poll? | **Not on their own.** A live session began returning HTTP 403 mid-cycle; transparent re-login and retry is mandatory (6.2) |
+| How long does a session last if kept alive? | **At least 12 minutes** of 60-second polling, with no expiry seen. Eviction dominates in practice, so this bound matters little (6.2) |
+| Is there any other source of CPU/memory? | **No.** A sweep of `?code=2` blocks 0-130 found no cpu/mem/load/heap field anywhere (9.5.3) |
+| Is there live WAN throughput anywhere? | **Yes** -- block 22 carries monotonic `inOctets`/`outOctets`/`inPkts`/`outPkts` plus per-port rates, and they move (9.5.2) |
 
 Corrections the live run forced, all of which would have been bugs:
 
@@ -1159,20 +1274,36 @@ Corrections the live run forced, all of which would have been bugs:
 
 ### 10.2 Still open
 
-1. **Router-mode behaviour.** The reference unit is `sysmode: AP` /
-   `workmode: FAP`. Confirm `device_list`, `client_list` and `performance` are
-   unchanged in Router mode, and that the WAN endpoints then carry real data.
-2. **Per-node CPU and memory at all.** Each node has its own `device_ip`.
-   Whether logging in to a slave directly yields that node's own `performance`
-   figures is untested, and would cost one session per node.
-3. **Session lifetime and the concurrent-session limit.** Login error code 0 is
-   "sessions full". The 85 s soak says nothing about hours. Establish how many
-   sessions the firmware allows and how long an idle one survives, so that
-   logout-on-unload is demonstrably sufficient.
-4. **`signal_level` scale.** Observed values are `0` and `3`. Whether the range
-   is 0-3, 0-4 or 0-5 is unknown, so do not present it as a percentage yet.
-5. **Other models and firmware builds.** Everything here is one E4R mesh on one
-   build. Record model plus firmware for any device a finding is confirmed on.
+Every question from the capture-only draft has now been answered. What remains
+needs hardware or conditions that were not available.
+
+1. **Router-mode payload content.** The Router and AP navigation trees are
+   byte-identical (7.1), so the endpoint surface and field names should not
+   change. What is untested is whether `wan_ipv4` / `internet` carry real uplink
+   data in Router mode. Switching mode re-runs setup and drops household
+   connectivity, so this needs a spare unit or a maintenance window -- it is
+   deliberately not something an automated probe should do.
+2. **RE-mode behaviour.** `navigator.re.json` drops `networkMap` and
+   `networkStatus` (7.1), so `client_list` and `device_list` may be unavailable
+   in range-extender mode. No RE unit was available.
+3. **Whether the TP-Link cloud mobile app shares the local single-session
+   table.** The local web UI definitely does (6.2). Testing this needs a phone
+   on the account: open the Deco app, then see whether an established local
+   session survives.
+4. **What `upTime` in block 22 actually counts** -- system uptime or WAN-link
+   uptime. The tick rate is measured (~64.5/s) but the semantics are not, and
+   telling them apart needs a known reboot or link drop (9.5.2).
+5. **The units of block 22's `inRates` / `outRates`.** Instantaneous, so not
+   checkable against averaged counter deltas. Kbit/s is the working assumption
+   by analogy with client rates (9.5.2). Prefer the octet counters, which have
+   no unit ambiguity.
+6. **Whether a per-node `performance` figure exists at all**, on any firmware.
+   On this build the value is static everywhere and no block exposes CPU or
+   memory, so the answer here is "no route found" rather than "not looked for".
+7. **Other models and firmware builds.** Everything is one E4R mesh on one
+   build, in AP mode. Record model plus firmware for any device a finding is
+   confirmed on. Block ids in particular are firmware-internal and should not be
+   assumed stable across models.
 
 ## 11. Tooling
 

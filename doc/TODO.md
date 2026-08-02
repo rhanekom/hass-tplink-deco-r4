@@ -29,8 +29,16 @@ milestones. Keep it current as work lands.
 - [ ] Entities: mesh nodes, connected clients, WAN/uplink state. Free extras
       `device_list` gives us: per-node `signal_level` (0-3) and per-node
       `software_ver` for firmware-drift visibility.
-- [ ] README should warn that polling evicts anyone logged into the router's own
-      web UI, and that this is a firmware constraint with no workaround.
+- [ ] Decide whether to expose **live WAN throughput**. `?code=2` block 22
+      carries monotonic `inOctets`/`outOctets`/`inPkts`/`outPkts` plus per-port
+      rates, and they are genuinely live (spec 9.5.2) - the only real telemetry
+      found, given `performance` is static. Trade-off: it means depending on a
+      firmware-internal block id rather than the `?form=` API, so it is less
+      likely to survive a firmware change. Read the security note in 9.5.1
+      first.
+- [x] README warns that polling evicts anyone logged into the router's own web
+      UI, that CPU/memory are not real, and that the admin password grants full
+      device read.
 
 ## Open questions
 
@@ -46,8 +54,9 @@ Full detail in `doc/specification.md` section 10.2.
       range-extender mode. No RE unit was available.
 - [ ] Whether the TP-Link **cloud** mobile app shares the local single-session
       table (the local web UI definitely does).
-- [ ] Whether the `?code=2` vxWorks block channel exposes real system stats,
-      which would be an alternative source for CPU/memory.
+- [ ] What block 22's `upTime` counts (system vs WAN-link uptime) and the units
+      of its `inRates`/`outRates`. The tick rate is measured at ~64.5/s; the
+      semantics are not.
 - [ ] Which firmware/hardware revisions this interface covers. Confirmed so far:
       Deco E4R, firmware 1.3.1 Build 20260403 Rel. 8727, 7-node mesh, AP mode
       (`sysmode: AP`, `workmode: FAP`).
